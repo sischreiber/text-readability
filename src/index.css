@@ -1,0 +1,42 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #fff;
+}
+
+::selection {
+  background: #0d47a1;
+  color: #fff;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #0d47a1 !important;
+  box-shadow: 0 0 0 2px #f5f7ff;
+}
+
+@keyframes flashA {
+  0% {
+    color: #0d47a1;
+  }
+  100% {
+    color: #212121;
+  }
+}
+
+@keyframes flashB {
+  0% {
+    color: #0d47a1;
+  }
+  100% {
+    color: #212121;
+  }
+}
