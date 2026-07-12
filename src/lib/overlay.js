@@ -1,13 +1,15 @@
+export const DIFFICULT_WORD_HIGHLIGHT = '#72e8a8';
+
 export const STYLE_COLORS = {
-  'Passive voice': '#ffdcdc',
-  'Weasel word': '#fff0c4',
-  Wordy: '#dbe8ff',
-  Adverb: '#ffdcef',
-  Cliché: '#e6dcff',
-  Filler: '#e8e8e8',
-  'Vague opener': '#e8e8e8',
-  Style: '#e8e8e8',
-  Difficult: '#d8efdb',
+  'Passive voice': '#ff9494',
+  'Weasel word': '#ffe566',
+  Wordy: '#78d4ff',
+  Adverb: '#ff9ed0',
+  Cliché: '#c098ff',
+  Filler: '#ffcb8a',
+  'Vague opener': '#d0b8ff',
+  Style: '#e8e4dc',
+  Difficult: DIFFICULT_WORD_HIGHLIGHT,
 };
 
 export function categorizeStyleHit(reason) {

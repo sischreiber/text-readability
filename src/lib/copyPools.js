@@ -240,10 +240,10 @@ export const REPEAT_NONE_TEMPLATES = [
 ];
 
 export const LEXICAL_DENSITY_TEMPLATES = [
-  'Higher lexical density packs more information into each word, which tends to read as denser and more demanding. Lower density reads lighter and more conversational.',
-  'When lexical density is high, more of each word carries meaning, so the text can feel heavier. Lower density leaves more room and reads more like speech.',
-  'Dense vocabulary means more content words per total word, which often feels more formal and concentrated. Lighter density spreads meaning across more words.',
-  'Lexical density is simply how much of the text is doing informational work. Higher reads packed and focused, lower reads open and conversational.',
+  'Lexical density is the share of content words (nouns, verbs, adjectives, and adverbs) out of all words in the text. The rest are function words such as "the", "of", "and", and "it" that hold sentences together without carrying much meaning, so your percentage shows how much of the text is doing informational work. Higher density tends to read as more formal and demanding; lower density reads lighter and more conversational.',
+  'This percentage measures how many words are content words (nouns, verbs, adjectives, adverbs) rather than function words like articles, prepositions, pronouns, and conjunctions. The number above is that share of your total word count. Higher density reads heavier and more formal; lower density spreads meaning across more glue words and reads more like speech.',
+  'Lexical density counts content words (nouns, verbs, adjectives, adverbs) as a fraction of every word. Function words such as "the", "of", and "it" connect the sentence but add little meaning on their own, so your percentage shows how much of the text is content rather than glue. Dense phrasing such as "Breach exposed customer data" scores higher than a padded version with extra function words, and it tends to read more demanding; lower density feels lighter and more conversational.',
+  'Lexical density is simply the percentage of content words among all words in your text. The remaining words are function words (articles, prepositions, pronouns, conjunctions) that keep prose flowing without much meaning of their own. Higher density packs more information into each content word and reads more formal; lower density leaves more room and reads lighter.',
 ];
 
 export function rollCopyPicks(metrics, wordVariety) {

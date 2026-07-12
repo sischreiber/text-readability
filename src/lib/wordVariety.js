@@ -1,19 +1,36 @@
 import nlp from 'compromise';
+import { tokenizeWithGaps } from './tokenizer.js';
 
 const WORD_RE = /[A-Za-z0-9']+/g;
 const TOKEN_RE = /[A-Za-z']+/g;
 
 export const POS_COLORS = {
-  noun: '#c6d6ff',
-  verb: '#d8efdb',
-  adjective: '#fff0c4',
-  adverb: '#ffdcef',
-  other: '#e8e8e8',
+  noun: '#78d4ff',
+  verb: '#72e8a8',
+  adjective: '#ffe566',
+  adverb: '#ff9ed0',
+  other: '#d0b8ff',
 };
 
-export const REPEAT_HIGHLIGHT = '#e6dcff';
+export const POS_LABELS = {
+  noun: 'Noun',
+  verb: 'Verb',
+  adjective: 'Adjective',
+  adverb: 'Adverb',
+  other: 'Other',
+};
+
+export const REPEAT_HIGHLIGHT = '#ff9a5c';
 
 function classifyTerm(term) {
+  if (
+    term.has('#ProperNoun') ||
+    term.has('#Person') ||
+    term.has('#Place') ||
+    term.has('#Organization')
+  ) {
+    return 'noun';
+  }
   if (term.has('#Noun')) return 'noun';
   if (term.has('#Verb')) return 'verb';
   if (term.has('#Adjective')) return 'adjective';
@@ -161,4 +178,27 @@ export function buildRepeatHighlightSegments(text, surfaceLookup) {
   }
 
   return segments;
+}
+
+export function getPosLabel(pos) {
+  return POS_LABELS[pos] ?? POS_LABELS.other;
+}
+
+export function buildPosHighlightSegments(text) {
+  const doc = nlp(text);
+  const byStart = new Map();
+
+  doc.terms().forEach((term) => {
+    const data = term.json({ offset: true })[0];
+    const start = data.offset?.start;
+    if (Number.isFinite(start)) {
+      byStart.set(start, classifyTerm(term));
+    }
+  });
+
+  return tokenizeWithGaps(text).map((seg) => {
+    if (seg.type === 'gap') return seg;
+    const pos = byStart.get(seg.index) ?? 'other';
+    return { ...seg, pos, posLabel: getPosLabel(pos) };
+  });
 }

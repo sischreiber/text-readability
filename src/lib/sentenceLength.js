@@ -4,8 +4,8 @@ const WORD_RE = /[A-Za-z0-9']+/g;
 
 export const SENTENCE_LENGTH_COLORS = {
   fine: null,
-  borderline: '#fff0c4',
-  'too-long': '#ffdcdc',
+  borderline: '#ffe566',
+  'too-long': '#ff9494',
 };
 
 export function countWordsInSpan(text) {

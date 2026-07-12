@@ -51,4 +51,4 @@ Lightweight unit tests cover input gating, text tokenization, word variety count
 
 ## Deploy
 
-The project is a standard Vite + React app. Push to GitHub and import the repo in [Vercel](https://vercel.com) for zero-config deployment.
+The project is a standard Vite + Svelte app. Push to GitHub and import the repo in [Vercel](https://vercel.com) for zero-config deployment.

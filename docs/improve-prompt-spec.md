@@ -3,7 +3,7 @@
 Diese Datei beschreibt, wie der kopierbare LLM-Prompt in der App gebaut wird. Nutze sie in Cursor für einen inhaltlichen Gegencheck (Copy, Regeln, Reihenfolge, Datenquellen).
 
 Implementierung: `src/lib/improvePrompt.js`  
-Anzeige in der UI: `src/App.jsx` (Section „Improve with AI“, `useMemo` über `gatherPromptInputs` + `buildImprovePrompt`)
+Anzeige in der UI: `src/App.svelte` (Section „Improve with AI“, `$derived` über `gatherPromptInputs` + `buildImprovePrompt`)
 
 ---
 
