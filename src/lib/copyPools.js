@@ -37,15 +37,6 @@ export const DALE_INTROS = [
   'A genuinely different method from grade level formulas, Dale-Chall counts unfamiliar words against a list of about 3,000 familiar ones. Lower is easier.',
 ];
 
-export const TEXT_STANDARD_INTROS = [
-  'This is the consensus grade level across several different formulas, so it is a steadier single takeaway than any one score on its own.',
-  'Multiple readability formulas voted on your text and this is where they agree. That makes it a more reliable summary than picking one score alone.',
-  'Rather than trusting a single formula, this grade reflects agreement across several methods. It is usually the most stable number to share with others.',
-  'Several independent readability formulas each produce a grade estimate. This string shows where they converge, which is why it works well as a headline number.',
-  'Think of this as the average opinion of multiple readability tests. Because it blends several formulas, it tends to be more consistent than any individual score.',
-  'This summary condenses several grade level estimates into one consensus reading level. It is often the best single number to quote.',
-];
-
 export const FRE_READERS = [
   [
     'Very easy to read. Almost anyone could get through it.',
@@ -159,14 +150,125 @@ export const DALE_READERS = [
   ],
 ];
 
-export function rollCopyPicks(metrics) {
+export const GUNNING_INTROS = [
+  'The Gunning Fog Index estimates years of formal education needed to read your text on first reading. It combines average sentence length with the share of words that have three or more syllables.',
+  'Gunning Fog measures readability from sentence length and complex words, counting any word with three or more syllables as hard. Higher scores mean a higher US grade level.',
+  'This formula asks how foggy the prose feels: long sentences plus a high percentage of polysyllabic words push the score up. Lower is easier.',
+  'Where Flesch rewards short words and sentences, Gunning Fog specifically penalizes words with three or more syllables. It is a useful check on how dense your vocabulary reads.',
+  'Gunning Fog is a US grade level estimate built from sentence length and the proportion of complex words in the text. Because it targets polysyllabic vocabulary, it often flags formal or technical writing.',
+  'Developed by Robert Gunning in 1952, this index blends average sentence length with the percentage of words containing three or more syllables. Higher means harder reading.',
+];
+
+export const DIFFICULT_INTROS = [
+  'Difficult words are longer, less familiar terms that readability formulas treat as harder to read. They usually have more syllables and sit outside a list of about 3,000 common English words.',
+  'This count tracks words that formulas flag as hard: polysyllabic terms and vocabulary outside the familiar word list most readers know by late elementary school.',
+  'Readability scores penalize difficult words because they slow readers down. These are the longer, less everyday terms the formulas notice in your text.',
+  'Every difficult word here is one the formulas would count against readability: not on the familiar word list, and typically two syllables or more.',
+];
+
+function sentenceWord(n) {
+  return n === 1 ? 'sentence' : 'sentences';
+}
+
+function runWord(n) {
+  return n === 1 ? 'runs' : 'run';
+}
+
+export const SENTENCE_LENGTH_LONG = [
+  (n, m) =>
+    `Long sentences are the single biggest thing the formulas count against you. ${n} of your ${m} ${sentenceWord(m)} ${runWord(n)} long. Breaking them into shorter ones is the fastest way to read more clearly.`,
+  (n, m) =>
+    `Readability formulas punish long sentences harder than almost anything else. ${n} of your ${m} ${sentenceWord(m)} ${runWord(n)} long, so splitting a few would lift every score above.`,
+  (n, m) =>
+    `Sentence length is where most readability scores quietly suffer. ${n} of ${m} ${sentenceWord(m)} here ${runWord(n)} long. Shorter sentences are the quickest fix.`,
+  (n, m) =>
+    `The formulas fold sentence length into one number, but this is where it hurts. ${n} of your ${m} ${sentenceWord(m)} ${runWord(n)} long. Trim them and the text opens up.`,
+  (n, m) =>
+    `Long sentences slow readers and drag scores down together. ${n} of your ${m} ${sentenceWord(m)} ${runWord(n)} long. Breaking them apart is the most direct improvement you can make.`,
+  (n, m) =>
+    `If you want clearer writing fast, start with sentence length. ${n} of your ${m} ${sentenceWord(m)} ${runWord(n)} long. Shorter ones would help every formula above.`,
+];
+
+export const SENTENCE_LENGTH_OK = [
+  'Your sentences are all a comfortable length. Nothing runs long enough to slow a reader down.',
+  'Every sentence here stays within a comfortable range. Nothing is long enough to trip a reader up.',
+  'Sentence length looks healthy throughout. Nothing runs so long that it would drag your scores down.',
+];
+
+function dominantPosNote(key) {
+  if (key === 'noun') {
+    return 'A very noun heavy text reads as static and formal, a verb heavy one reads as active and direct.';
+  }
+  if (key === 'verb') {
+    return 'A verb heavy text reads as active and direct, a noun heavy one reads as static and formal.';
+  }
+  if (key === 'adjective') {
+    return 'An adjective heavy text reads as descriptive and vivid, a verb heavy one reads as active and direct.';
+  }
+  return 'An adverb heavy text reads as careful about manner and tone, a verb heavy one reads as active and direct.';
+}
+
+export const POS_SUMMARY_TEMPLATES = [
+  (d) =>
+    `By a rough word tag, this text leans on ${d.dominant} and ${d.second} in a ${d.ratio} ratio. ${dominantPosNote(d.dominantKey)}`,
+  (d) =>
+    `Approximate tagging puts ${d.dominant} and ${d.second} ahead in about a ${d.ratio} mix. ${dominantPosNote(d.dominantKey)}`,
+  (d) =>
+    `Word tags are only approximate, but ${d.dominant} and ${d.second} lead here in roughly a ${d.ratio} ratio. ${dominantPosNote(d.dominantKey)}`,
+  (d) =>
+    `This rough pass over parts of speech shows ${d.dominant} and ${d.second} in about a ${d.ratio} ratio. ${dominantPosNote(d.dominantKey)}`,
+  (d) =>
+    `Tagging is approximate, yet ${d.dominant} and ${d.second} stand out in roughly a ${d.ratio} mix. ${dominantPosNote(d.dominantKey)}`,
+];
+
+export const REPEAT_HAS_TEMPLATES = [
+  (n) =>
+    `${n} content words show up more than once. Some repetition is natural, but the words below are the ones a reader will notice you leaning on.`,
+  (n) =>
+    `About ${n} content words repeat. A little echo is normal, yet the chips below are the ones readers are most likely to notice.`,
+  (n) =>
+    `${n} content words appear more than once here. Repetition can help rhythm, but the list below shows where you lean on the same ideas.`,
+  (n) =>
+    `Roughly ${n} content words repeat in this text. That is not always a problem, but the words below are the ones that stand out.`,
+];
+
+export const REPEAT_NONE_TEMPLATES = [
+  'Almost no repetition. You are using a fresh word for nearly every idea.',
+  'Very little repetition shows up. Most content words appear only once.',
+  'Hardly any content words repeat. The vocabulary stays varied from line to line.',
+  'Repetition is minimal. You reach for a new word for almost every idea.',
+];
+
+export const LEXICAL_DENSITY_TEMPLATES = [
+  'Higher lexical density packs more information into each word, which tends to read as denser and more demanding. Lower density reads lighter and more conversational.',
+  'When lexical density is high, more of each word carries meaning, so the text can feel heavier. Lower density leaves more room and reads more like speech.',
+  'Dense vocabulary means more content words per total word, which often feels more formal and concentrated. Lighter density spreads meaning across more words.',
+  'Lexical density is simply how much of the text is doing informational work. Higher reads packed and focused, lower reads open and conversational.',
+];
+
+export function rollCopyPicks(metrics, wordVariety) {
+  const posSummary = wordVariety
+    ? pick(POS_SUMMARY_TEMPLATES)(wordVariety.pos.dominant)
+    : null;
+  const repeatSummary =
+    wordVariety && wordVariety.repeated.uniqueRepeatCount > 0
+      ? pick(REPEAT_HAS_TEMPLATES)(wordVariety.repeated.uniqueRepeatCount)
+      : pick(REPEAT_NONE_TEMPLATES);
+
   return {
     freIntro: pick(FRE_INTROS),
     cliIntro: pick(CLI_INTROS),
     daleIntro: pick(DALE_INTROS),
-    textStandardIntro: pick(TEXT_STANDARD_INTROS),
+    gunningIntro: pick(GUNNING_INTROS),
+    difficultIntro: pick(DIFFICULT_INTROS),
+    sentenceLongLine: pick(SENTENCE_LENGTH_LONG),
+    sentenceOkLine: pick(SENTENCE_LENGTH_OK),
     freReader: pick(FRE_READERS[metrics.fleschBand.index]),
     cliReader: pick(CLI_READERS[metrics.cliBucket]),
+    gunningReader: pick(CLI_READERS[metrics.gunningBucket]),
     daleReader: pick(DALE_READERS[metrics.daleBand.index]),
+    posSummary,
+    repeatSummary,
+    densityLine: pick(LEXICAL_DENSITY_TEMPLATES),
   };
 }

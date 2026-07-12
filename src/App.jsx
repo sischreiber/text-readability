@@ -2,33 +2,51 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { rollCopyPicks } from './lib/copyPools';
 import { evaluateGate } from './lib/gates';
 import {
-  STYLE_COLORS,
-  buildCharOverlay,
-  categorizeStyleHit,
-  findDifficultWordPositions,
-  mergeCharRuns,
-} from './lib/overlay';
-import {
   computeMetrics,
+  formatCliGradePhrase,
+  formatDaleGradePhrase,
+  formatGunningFogPhrase,
   getDifficultWordChips,
   rs,
 } from './lib/readability';
+import { evaluatePasteSecurity } from './lib/security';
+import {
+  SENTENCE_LENGTH_COLORS,
+  analyzeSentenceLength,
+  buildSentenceLengthSegments,
+  hasLongSentenceHighlight,
+} from './lib/sentenceLength';
 import { tokenizeWithGaps } from './lib/tokenizer';
 import {
-  hasWriteGoodFailed,
-  isWriteGoodLoaded,
-  loadWriteGood,
-  runWriteGood,
-} from './lib/writeGoodLoader';
+  POS_COLORS,
+  REPEAT_HIGHLIGHT,
+  analyzeWordVariety,
+  buildRepeatHighlightSegments,
+} from './lib/wordVariety';
+import {
+  buildImprovePrompt,
+  gatherPromptInputs,
+} from './lib/improvePrompt';
+import { pickPlaceholder } from './lib/placeholders';
 
 const FONT =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif";
+
+const ANALYSIS_DEBOUNCE_MS = 300;
 
 const SYLLABLE_COLORS = {
   2: '#e7eeff',
   3: '#c6d6ff',
   4: '#a4bcff',
 };
+
+const POS_BUCKETS = [
+  { key: 'noun', label: 'Nouns' },
+  { key: 'verb', label: 'Verbs' },
+  { key: 'adjective', label: 'Adjectives' },
+  { key: 'adverb', label: 'Adverbs' },
+  { key: 'other', label: 'Other' },
+];
 
 const FRE_ROWS = [
   { range: '90–100', label: 'Very Easy', min: 90 },
@@ -50,14 +68,60 @@ const DALE_ROWS = [
   { range: '10.0 and up', label: 'College graduate', match: (s) => s >= 10.0 },
 ];
 
-const STYLE_LEGEND = [
-  { label: 'Passive voice', color: STYLE_COLORS['Passive voice'] },
-  { label: 'Weasel word', color: STYLE_COLORS['Weasel word'] },
-  { label: 'Wordy', color: STYLE_COLORS.Wordy },
-  { label: 'Adverb', color: STYLE_COLORS.Adverb },
-  { label: 'Cliché', color: STYLE_COLORS['Cliché'] },
-  { label: 'Hard word', color: STYLE_COLORS.Difficult },
+const STACK_PACKAGES = [
+  {
+    name: 'text-readability',
+    npm: true,
+    role: 'Flesch, Coleman-Liau, Dale-Chall, Gunning Fog, difficult words, syllable counts',
+  },
+  {
+    name: 'sentence-splitter',
+    npm: true,
+    role: 'Sentence boundaries and length checks',
+  },
+  {
+    name: 'compromise',
+    npm: true,
+    role: 'Approximate parts of speech, repetition, and lexical density',
+  },
+  {
+    name: 'write-good',
+    npm: true,
+    role: 'Style flags in the AI prompt (passive voice, weasel words, wordiness)',
+  },
+  {
+    name: 'React and Vite',
+    npm: true,
+    role: 'Client side UI. All analysis stays local in your browser',
+  },
 ];
+
+const H1_STYLE = {
+  fontSize: '1.6rem',
+  fontWeight: 700,
+  margin: '0 0 1.2rem',
+  color: '#212121',
+};
+
+const H2_STYLE = {
+  fontSize: '1.25rem',
+  fontWeight: 700,
+  margin: '0 0 0.8rem',
+  color: '#212121',
+};
+
+const PROSE_STYLE = {
+  fontFamily: FONT,
+  fontSize: '1rem',
+  lineHeight: 1.6,
+  fontWeight: 400,
+  color: '#3a3a3a',
+  margin: '0 0 0.9rem',
+};
+
+function Prose({ children, style }) {
+  return <p style={{ ...PROSE_STYLE, ...style }}>{children}</p>;
+}
 
 function syllableClass(count) {
   if (count <= 1) return 1;
@@ -135,6 +199,10 @@ function SegmentSpan({ text, background }) {
   );
 }
 
+function Result({ children }) {
+  return <span style={{ fontWeight: 700 }}>{children}</span>;
+}
+
 function FlashValue({ value, flashOnChange, flashToggle }) {
   const prev = useRef(value);
   const [anim, setAnim] = useState(null);
@@ -153,6 +221,7 @@ function FlashValue({ value, flashOnChange, flashToggle }) {
   return (
     <span
       style={{
+        fontWeight: 700,
         fontVariantNumeric: 'tabular-nums',
         animation: anim ? `${anim} 0.6s ease` : undefined,
       }}
@@ -221,51 +290,130 @@ function ScoreTable({ rows, activeIndex, columns }) {
   );
 }
 
-export default function App({
-  accentColor = '#0d47a1',
-  flashOnChange = false,
-}) {
-  const [rawInput, setRawInput] = useState('');
-  const [debouncedText, setDebouncedText] = useState('');
-  const [writeGoodReady, setWriteGoodReady] = useState(isWriteGoodLoaded());
-  const [writeGoodError, setWriteGoodError] = useState(hasWriteGoodFailed());
-  const [flashToggle, setFlashToggle] = useState(0);
+function CopyPromptButton({ text }) {
+  const [label, setLabel] = useState('Copy prompt');
+  const timerRef = useRef(null);
 
-  const copyPicksRef = useRef(null);
-  const wasEmptyRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    try {
+      await navigator.clipboard.writeText(text);
+      setLabel('Copied');
+    } catch {
+      setLabel('Copy failed, select the text manually');
+    }
+    timerRef.current = setTimeout(() => setLabel('Copy prompt'), 2000);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      style={{
+        padding: '0.5rem 0.9rem',
+        border: '1px solid #898ea4',
+        borderRadius: '5px',
+        background: '#fff',
+        fontSize: '0.95rem',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        color: '#212121',
+        marginBottom: '0.75rem',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+export default function App({ flashOnChange = false }) {
+  const [rawInput, setRawInput] = useState('');
+  const [analysisText, setAnalysisText] = useState('');
+  const [securityBlock, setSecurityBlock] = useState(null);
+  const [flashToggle, setFlashToggle] = useState(0);
+  const [placeholder] = useState(() => pickPlaceholder());
+
+  const pendingPasteRef = useRef(false);
   const prevMetricsRef = useRef(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedText(rawInput), 300);
-    return () => clearTimeout(timer);
-  }, [rawInput]);
-
-  useEffect(() => {
-    loadWriteGood()
-      .then(() => setWriteGoodReady(true))
-      .catch(() => setWriteGoodError(true));
+    window.scrollTo(0, 0);
   }, []);
 
-  const gate = useMemo(() => evaluateGate(debouncedText), [debouncedText]);
+  const handleChange = (e) => {
+    const value = e.target.value;
 
-  const metrics = useMemo(() => {
-    if (gate.type !== 'ok') return null;
-    return computeMetrics(debouncedText);
-  }, [debouncedText, gate.type]);
-
-  useEffect(() => {
-    const isEmpty = debouncedText.trim() === '';
-    if (isEmpty) {
-      wasEmptyRef.current = true;
-      copyPicksRef.current = null;
+    if (!value.trim()) {
+      setRawInput('');
+      setAnalysisText('');
+      setSecurityBlock(null);
+      pendingPasteRef.current = false;
       return;
     }
 
-    if (wasEmptyRef.current && metrics) {
-      wasEmptyRef.current = false;
-      copyPicksRef.current = rollCopyPicks(metrics);
+    if (pendingPasteRef.current) {
+      pendingPasteRef.current = false;
+      const security = evaluatePasteSecurity(value);
+
+      if (!security.allowed) {
+        setSecurityBlock(security.reason);
+        setAnalysisText('');
+        setRawInput(security.sanitized);
+        return;
+      }
+
+      setSecurityBlock(null);
+      setRawInput(security.sanitized);
+      return;
     }
-  }, [debouncedText, metrics]);
+
+    setSecurityBlock(null);
+    setRawInput(value);
+  };
+
+  useEffect(() => {
+    if (!rawInput.trim() || securityBlock) return;
+
+    const timer = setTimeout(() => {
+      setAnalysisText(rawInput);
+    }, ANALYSIS_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [rawInput, securityBlock]);
+
+  const handlePaste = () => {
+    pendingPasteRef.current = true;
+  };
+
+  const handleClear = () => {
+    setRawInput('');
+    setAnalysisText('');
+    setSecurityBlock(null);
+    pendingPasteRef.current = false;
+  };
+
+  const gate = useMemo(() => evaluateGate(analysisText), [analysisText]);
+
+  const metrics = useMemo(() => {
+    if (gate.type !== 'ok') return null;
+    return computeMetrics(analysisText);
+  }, [analysisText, gate.type]);
+
+  const wordVariety = useMemo(() => {
+    if (gate.type !== 'ok') return null;
+    return analyzeWordVariety(analysisText);
+  }, [analysisText, gate.type]);
+
+  const copy = useMemo(() => {
+    if (gate.type !== 'ok' || !metrics || !wordVariety) return null;
+    return rollCopyPicks(metrics, wordVariety);
+  }, [analysisText, gate.type, metrics, wordVariety]);
 
   useEffect(() => {
     if (!flashOnChange || !metrics || !prevMetricsRef.current) {
@@ -276,6 +424,7 @@ export default function App({
     if (
       prev.flesch !== metrics.flesch ||
       prev.cli !== metrics.cli ||
+      prev.gunningFog !== metrics.gunningFog ||
       prev.dale !== metrics.dale ||
       prev.difficultCount !== metrics.difficultCount
     ) {
@@ -284,57 +433,65 @@ export default function App({
     prevMetricsRef.current = metrics;
   }, [metrics, flashOnChange]);
 
-  const styleHits = useMemo(() => {
-    if (gate.type !== 'ok' || !writeGoodReady) return [];
-    return runWriteGood(debouncedText).map((hit) => ({
-      ...hit,
-      category: categorizeStyleHit(hit.reason),
-    }));
-  }, [debouncedText, gate.type, writeGoodReady]);
-
-  const skipHighlight = debouncedText.length > 20000;
+  const skipHighlight = analysisText.length > 20000;
 
   const syllableSegments = useMemo(() => {
     if (skipHighlight || gate.type !== 'ok') return null;
-    return tokenizeWithGaps(debouncedText).map((seg) => {
+    return tokenizeWithGaps(analysisText).map((seg) => {
       if (seg.type === 'gap') return seg;
       const count = syllableClass(rs.syllableCount(seg.text));
       return { ...seg, syllables: count };
     });
-  }, [debouncedText, gate.type, skipHighlight]);
+  }, [analysisText, gate.type, skipHighlight]);
+
+  const sentenceLengthStats = useMemo(() => {
+    if (gate.type !== 'ok') return null;
+    return analyzeSentenceLength(analysisText);
+  }, [analysisText, gate.type]);
+
+  const sentenceLengthSegments = useMemo(() => {
+    if (skipHighlight || gate.type !== 'ok') return null;
+    return buildSentenceLengthSegments(analysisText);
+  }, [analysisText, gate.type, skipHighlight]);
+
+  const showSentenceLengthBox =
+    sentenceLengthSegments && hasLongSentenceHighlight(sentenceLengthSegments);
 
   const hardWordSegments = useMemo(() => {
     if (skipHighlight || gate.type !== 'ok' || !metrics) return null;
-    return tokenizeWithGaps(debouncedText).map((seg) => {
+    return tokenizeWithGaps(analysisText).map((seg) => {
       if (seg.type === 'gap') return seg;
       const hard = metrics.difficultLookup.has(seg.text.toLowerCase());
       return { ...seg, hard };
     });
-  }, [debouncedText, gate.type, metrics, skipHighlight]);
-
-  const styleRuns = useMemo(() => {
-    if (
-      skipHighlight ||
-      gate.type !== 'ok' ||
-      !metrics ||
-      styleHits.length === 0
-    ) {
-      return null;
-    }
-    const positions = findDifficultWordPositions(
-      debouncedText,
-      metrics.difficultLookup,
-    );
-    const categories = buildCharOverlay(debouncedText, positions, styleHits);
-    return mergeCharRuns(debouncedText, categories).filter((run) => run.category);
-  }, [debouncedText, gate.type, metrics, styleHits, skipHighlight]);
+  }, [analysisText, gate.type, metrics, skipHighlight]);
 
   const chips = useMemo(() => {
     if (!metrics || metrics.difficultCount === 0) return [];
-    return getDifficultWordChips(debouncedText, metrics.difficultWords);
-  }, [debouncedText, metrics]);
+    return getDifficultWordChips(analysisText, metrics.difficultWords);
+  }, [analysisText, metrics]);
 
-  const copy = copyPicksRef.current;
+  const repeatSegments = useMemo(() => {
+    if (skipHighlight || gate.type !== 'ok' || !wordVariety) return null;
+    if (wordVariety.repeated.words.length === 0) return null;
+    return buildRepeatHighlightSegments(
+      analysisText,
+      wordVariety.repeated.surfaceLookup,
+    );
+  }, [analysisText, gate.type, skipHighlight, wordVariety]);
+
+  const improvePrompt = useMemo(() => {
+    if (gate.type !== 'ok' || !metrics || !wordVariety || !sentenceLengthStats) {
+      return null;
+    }
+    const inputs = gatherPromptInputs(
+      analysisText,
+      metrics,
+      sentenceLengthStats,
+      wordVariety,
+    );
+    return buildImprovePrompt(inputs);
+  }, [analysisText, gate.type, metrics, sentenceLengthStats, wordVariety]);
 
   const sectionGapFirst = { paddingTop: '1.6rem' };
   const sectionGap = { paddingTop: '2.8rem' };
@@ -348,25 +505,17 @@ export default function App({
         color: '#212121',
         maxWidth: '48rem',
         margin: '0 auto',
-        padding: '0 1rem 5rem',
+        padding: '3rem 1rem 5rem',
         minHeight: '100vh',
       }}
     >
-      <h1
-        style={{
-          fontSize: '1.05rem',
-          fontWeight: 700,
-          margin: '2rem 0 1.2rem',
-          color: '#212121',
-        }}
-      >
-        Text Readability
-      </h1>
+      <h1 style={H1_STYLE}>Text Readability</h1>
 
       <textarea
         value={rawInput}
-        onChange={(e) => setRawInput(e.target.value)}
-        placeholder="Paste your text here…"
+        onChange={handleChange}
+        onPaste={handlePaste}
+        placeholder={placeholder}
         spellCheck={false}
         style={{
           width: '100%',
@@ -384,7 +533,27 @@ export default function App({
         }}
       />
 
-      {gate.type === 'non-english' && (
+      {rawInput.trim() !== '' && (
+        <button
+          type="button"
+          onClick={handleClear}
+          style={{
+            marginTop: '0.65rem',
+            padding: '0.5rem 0.9rem',
+            border: '1px solid #898ea4',
+            borderRadius: '5px',
+            background: '#fff',
+            fontSize: '0.95rem',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: '#212121',
+          }}
+        >
+          Clear
+        </button>
+      )}
+
+      {securityBlock && rawInput.trim() !== '' && (
         <div
           style={{
             marginTop: '1.6rem',
@@ -393,12 +562,27 @@ export default function App({
             borderLeft: '4px solid #9a2b2b',
             borderRadius: '5px',
             padding: '0.85rem 1rem',
-            display: 'flex',
-            gap: '0.65rem',
-            alignItems: 'flex-start',
           }}
         >
-          <span style={{ fontWeight: 700, color: '#9a2b2b' }}>!</span>
+          <span style={{ color: '#7a2222', fontSize: '0.9rem' }}>
+            {securityBlock === 'code'
+              ? 'This looks like source code, not prose. Paste readable English text to get scores.'
+              : 'This paste looks unsafe. Readability analysis only works with plain text, so remove scripts or markup and try again.'}
+          </span>
+        </div>
+      )}
+
+      {!securityBlock && gate.type === 'non-english' && analysisText.trim() !== '' && (
+        <div
+          style={{
+            marginTop: '1.6rem',
+            background: '#fff6f5',
+            border: '1px solid #e6b9b4',
+            borderLeft: '4px solid #9a2b2b',
+            borderRadius: '5px',
+            padding: '0.85rem 1rem',
+          }}
+        >
           <span style={{ color: '#7a2222', fontSize: '0.9rem' }}>
             This text doesn&apos;t look like English. Readability scores are calculated for
             English text only. Paste English text to see the metrics.
@@ -406,7 +590,7 @@ export default function App({
         </div>
       )}
 
-      {gate.type === 'too-short' && (
+      {!securityBlock && gate.type === 'too-short' && analysisText.trim() !== '' && (
         <div
           style={{
             marginTop: '1.6rem',
@@ -414,12 +598,8 @@ export default function App({
             border: '1px solid #d9d9d9',
             borderRadius: '5px',
             padding: '0.85rem 1rem',
-            display: 'flex',
-            gap: '0.65rem',
-            alignItems: 'flex-start',
           }}
         >
-          <span style={{ fontWeight: 700, color: '#555' }}>i</span>
           <span style={{ color: '#3a3a3a', fontSize: '0.9rem' }}>
             A little more text, please. Readability formulas need at least 12 words to say
             anything meaningful, so add about {12 - gate.wordCount} more.
@@ -427,31 +607,11 @@ export default function App({
         </div>
       )}
 
-      {gate.type === 'ok' && metrics && copy && (
+      {!securityBlock && gate.type === 'ok' && metrics && copy && (
         <>
           <section style={sectionGapFirst}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.8rem' }}>
-              Overall reading level
-            </h2>
-            <p
-              style={{
-                fontWeight: 700,
-                fontSize: '1.25rem',
-                color: '#212121',
-                margin: '0 0 0.8rem',
-              }}
-            >
-              {metrics.textStandard}
-            </p>
-            <p style={{ color: '#3a3a3a', fontSize: '1rem', lineHeight: 1.6, margin: 0 }}>
-              {copy.textStandardIntro}
-            </p>
-          </section>
-
-          <section style={sectionGap}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.8rem' }}>
-              Flesch Reading Ease
-            </h2>
+            <h2 style={H2_STYLE}>Flesch Reading Ease</h2>
+            <Prose>{copy.freIntro}</Prose>
             {syllableSegments && (
               <>
                 <Legend
@@ -480,25 +640,15 @@ export default function App({
                 </InTextBox>
               </>
             )}
-            <p
-              style={{
-                color: '#3a3a3a',
-                fontSize: '1rem',
-                lineHeight: 1.6,
-                margin: syllableSegments ? '0.9rem 0 0.8rem' : '0 0 0.8rem',
-              }}
-            >
-              {copy.freIntro}
-            </p>
-            <p style={{ color: '#212121', margin: '0 0 0.9rem' }}>
+            <Prose style={{ margin: syllableSegments ? '0.9rem 0 0.9rem' : undefined }}>
               Your score is{' '}
               <FlashValue
                 value={formatScore(metrics.flesch)}
                 flashOnChange={flashOnChange}
                 flashToggle={flashToggle}
               />
-              , rated {metrics.fleschBand.label.toLowerCase()}. {copy.freReader}
-            </p>
+              , rated <Result>{metrics.fleschBand.label.toLowerCase()}</Result>. {copy.freReader}
+            </Prose>
             <ScoreTable
               rows={FRE_ROWS}
               activeIndex={metrics.fleschBand.index}
@@ -507,53 +657,85 @@ export default function App({
           </section>
 
           <section style={sectionGap}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.8rem' }}>
-              Coleman–Liau Index
-            </h2>
-            <p
-              style={{
-                color: '#3a3a3a',
-                fontSize: '1rem',
-                lineHeight: 1.6,
-                margin: '0 0 0.8rem',
-              }}
-            >
-              {copy.cliIntro}
-            </p>
-            <p style={{ color: '#212121', margin: 0 }}>
-              The Coleman–Liau Index puts this text at about grade{' '}
-              <FlashValue
-                value={formatScore(metrics.cli)}
-                flashOnChange={flashOnChange}
-                flashToggle={flashToggle}
-              />
-              . {copy.cliReader}
-            </p>
+            <h2 style={H2_STYLE}>Sentence length</h2>
+            <Prose>
+              {sentenceLengthStats && sentenceLengthStats.longCount > 0
+                ? copy.sentenceLongLine(
+                    sentenceLengthStats.longCount,
+                    sentenceLengthStats.total,
+                  )
+                : copy.sentenceOkLine}
+            </Prose>
+            {showSentenceLengthBox && (
+              <>
+                <Legend
+                  items={[
+                    { label: '21 to 30 words', color: SENTENCE_LENGTH_COLORS.borderline },
+                    { label: '31+ words', color: SENTENCE_LENGTH_COLORS['too-long'] },
+                  ]}
+                />
+                <InTextBox>
+                  {sentenceLengthSegments.map((seg, i) =>
+                    seg.type === 'gap' ? (
+                      <SegmentSpan key={i} text={seg.text} />
+                    ) : (
+                      <SegmentSpan
+                        key={i}
+                        text={seg.text}
+                        background={SENTENCE_LENGTH_COLORS[seg.band] ?? undefined}
+                      />
+                    ),
+                  )}
+                </InTextBox>
+              </>
+            )}
+            {sentenceLengthStats && sentenceLengthStats.total > 0 && (
+              <p
+                style={{
+                  color: '#555',
+                  fontSize: '0.9rem',
+                  margin: showSentenceLengthBox ? '0.75rem 0 0' : '0',
+                }}
+              >
+                Longest sentence: <Result>{sentenceLengthStats.longest}</Result> words.
+              </p>
+            )}
           </section>
 
           <section style={sectionGap}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.8rem' }}>
-              Dale–Chall Readability
-            </h2>
-            <p
-              style={{
-                color: '#3a3a3a',
-                fontSize: '1rem',
-                lineHeight: 1.6,
-                margin: '0 0 0.8rem',
-              }}
-            >
-              {copy.daleIntro}
-            </p>
-            <p style={{ color: '#212121', margin: '0 0 0.9rem' }}>
-              Your score is{' '}
-              <FlashValue
-                value={formatScore(metrics.dale)}
-                flashOnChange={flashOnChange}
-                flashToggle={flashToggle}
-              />
-              , a {metrics.daleBand.label.toLowerCase()} reading level. {copy.daleReader}
-            </p>
+            <h2 style={H2_STYLE}>Coleman–Liau Index</h2>
+            <Prose>{copy.cliIntro}</Prose>
+            <Prose style={{ margin: 0 }}>
+              The Coleman–Liau Index puts this text at{' '}
+              <Result>{formatCliGradePhrase(metrics.cli, metrics.cliBucket)}</Result>.{' '}
+              {copy.cliReader}
+            </Prose>
+          </section>
+
+          <section style={sectionGap}>
+            <h2 style={H2_STYLE}>Gunning Fog Index</h2>
+            <Prose>{copy.gunningIntro}</Prose>
+            <Prose style={{ margin: 0 }}>
+              The Gunning Fog Index puts this text at{' '}
+              <Result>{formatGunningFogPhrase(metrics.gunningFog, metrics.gunningBucket)}</Result>.{' '}
+              {copy.gunningReader}
+            </Prose>
+          </section>
+
+          <section style={sectionGap}>
+            <h2 style={H2_STYLE}>Dale–Chall Readability</h2>
+            <Prose>{copy.daleIntro}</Prose>
+            <Prose>
+              Your{' '}
+              <Result>
+                {formatDaleGradePhrase(
+                  metrics.dale,
+                  metrics.daleBand.index,
+                  metrics.daleBand.label,
+                )}
+              </Result>
+              . {copy.daleReader}
+            </Prose>
             <ScoreTable
               rows={DALE_ROWS}
               activeIndex={metrics.daleBand.index}
@@ -562,9 +744,106 @@ export default function App({
           </section>
 
           <section style={sectionGap}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.8rem' }}>
-              Difficult words
-            </h2>
+            <h2 style={H2_STYLE}>Word variety</h2>
+
+            <Prose style={{ margin: '0 0 0.75rem' }}>{copy.posSummary}</Prose>
+            <div
+              style={{
+                display: 'flex',
+                width: '100%',
+                height: '0.75rem',
+                borderRadius: '3px',
+                overflow: 'hidden',
+                marginBottom: '0.55rem',
+              }}
+            >
+              {POS_BUCKETS.map((bucket) => {
+                const pct = wordVariety.pos.percentages[bucket.key];
+                if (pct === 0) return null;
+                return (
+                  <div
+                    key={bucket.key}
+                    style={{
+                      width: `${pct}%`,
+                      background: POS_COLORS[bucket.key],
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <Legend
+              items={POS_BUCKETS.map((bucket) => ({
+                label: `${bucket.label} ${wordVariety.pos.percentages[bucket.key]}%`,
+                color: POS_COLORS[bucket.key],
+              }))}
+            />
+
+            <Prose style={{ marginTop: '1.4rem' }}>{copy.repeatSummary}</Prose>
+            {repeatSegments && (
+              <InTextBox>
+                {repeatSegments.map((seg, i) =>
+                  seg.type === 'gap' ? (
+                    <SegmentSpan key={i} text={seg.text} />
+                  ) : (
+                    <SegmentSpan
+                      key={i}
+                      text={seg.text}
+                      background={seg.repeat ? REPEAT_HIGHLIGHT : undefined}
+                    />
+                  ),
+                )}
+              </InTextBox>
+            )}
+            {wordVariety.repeated.words.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                  marginTop: repeatSegments ? '0.75rem' : 0,
+                }}
+              >
+                {wordVariety.repeated.words.map((chip) => (
+                  <span
+                    key={chip.word}
+                    style={{
+                      padding: '0.4rem 0.8rem',
+                      background: '#f5f5f5',
+                      border: '1px solid #d9d9d9',
+                      borderRadius: '999px',
+                      fontSize: '0.95rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                    }}
+                  >
+                    {chip.word}
+                    <span
+                      style={{
+                        background: '#e0e0e0',
+                        borderRadius: '999px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        color: '#555',
+                        padding: '0.1rem 0.4rem',
+                      }}
+                    >
+                      ×{chip.count}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <p style={{ margin: '1.4rem 0 0.5rem', color: '#3a3a3a', fontSize: '1rem' }}>
+              Lexical density: <Result>{wordVariety.lexicalDensity.percent}</Result> percent
+            </p>
+            <Prose style={{ margin: 0 }}>{copy.densityLine}</Prose>
+          </section>
+
+          <section style={sectionGap}>
+            <h2 style={H2_STYLE}>Difficult words</h2>
+            <Prose>{copy.difficultIntro}</Prose>
             {metrics.difficultCount >= 1 && hardWordSegments && (
               <>
                 <Legend items={[{ label: 'Hard word', color: '#d8efdb' }]} />
@@ -583,21 +862,29 @@ export default function App({
                 </InTextBox>
               </>
             )}
-            <p
+            <Prose
               style={{
-                color: '#3a3a3a',
-                fontSize: '1rem',
-                lineHeight: 1.6,
                 margin:
                   metrics.difficultCount >= 1 && hardWordSegments
                     ? '0.9rem 0 0.8rem'
-                    : '0 0 0.8rem',
+                    : undefined,
               }}
             >
-              {metrics.difficultCount > 0
-                ? `${metrics.difficultWords.length} distinct words below account for ${metrics.difficultCount} of your ${metrics.lexicon} words (about ${Math.round((metrics.difficultCount / metrics.lexicon) * 100)}%). These are the longer, less familiar words the formulas count against you, so swapping them for simpler ones is the quickest way to lift every score above.`
-                : 'Nothing stands out. Your text is built almost entirely from short, familiar words, which is exactly what keeps the scores easy.'}
-            </p>
+              {metrics.difficultCount > 0 ? (
+                <>
+                  <Result>{metrics.difficultWords.length}</Result> distinct words below account
+                  for <Result>{metrics.difficultCount}</Result> of your{' '}
+                  <Result>{metrics.lexicon}</Result> words (about{' '}
+                  <Result>
+                    {Math.round((metrics.difficultCount / metrics.lexicon) * 100)}%
+                  </Result>
+                  ). These are the longer, less familiar words the formulas count against you, so
+                  swapping them for simpler ones is the quickest way to lift every score above.
+                </>
+              ) : (
+                'Nothing stands out. Your text is built almost entirely from short, familiar words, which is exactly what keeps the scores easy.'
+              )}
+            </Prose>
             {chips.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                 {chips.map((chip) => (
@@ -636,84 +923,64 @@ export default function App({
           </section>
 
           <section style={sectionGap}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.8rem' }}>
-              Style check
-            </h2>
+            <h2 style={H2_STYLE}>Improve with AI</h2>
+            <p style={{ color: '#3a3a3a', fontSize: '1rem', margin: '0 0 0.9rem' }}>
+              Copy this prompt into any LLM to get a clearer rewrite that keeps your
+              original meaning.
+            </p>
+            <CopyPromptButton text={improvePrompt} />
+            <div
+              style={{
+                border: '1px solid #d9d9d9',
+                borderRadius: '5px',
+                padding: '1rem 1.1rem',
+                background: '#f5f7ff',
+                fontFamily:
+                  'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                fontSize: '0.9rem',
+                lineHeight: 1.5,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                color: '#212121',
+                maxHeight: '22rem',
+                overflow: 'auto',
+              }}
+            >
+              {improvePrompt}
+            </div>
+          </section>
 
-            {!writeGoodReady && !writeGoodError && (
-              <p style={{ color: '#898ea4', fontSize: '0.95rem', margin: '0 0 0.8rem' }}>
-                Loading style check…
-              </p>
-            )}
-
-            {writeGoodError && (
-              <p style={{ color: '#898ea4', fontSize: '0.95rem', margin: '0 0 0.8rem' }}>
-                Style check couldn&apos;t load.
-              </p>
-            )}
-
-            {writeGoodReady && styleRuns && (
-              <>
-                <Legend items={STYLE_LEGEND} />
-                <InTextBox>
-                  {styleRuns.map((run, i) => (
-                    <SegmentSpan
-                      key={i}
-                      text={run.text}
-                      background={STYLE_COLORS[run.category] ?? STYLE_COLORS.Style}
-                    />
-                  ))}
-                </InTextBox>
-              </>
-            )}
-
-            {writeGoodReady && (
-              <>
-                <p
-                  style={{
-                    color: '#3a3a3a',
-                    fontSize: '1rem',
-                    lineHeight: 1.6,
-                    margin:
-                      styleRuns ? '0.9rem 0 0.8rem' : '0 0 0.8rem',
-                  }}
-                >
-                  {styleHits.length === 0
-                    ? 'Clean. Nothing flagged for passive voice, filler, or hedging words.'
-                    : `${styleHits.length} phrase${styleHits.length === 1 ? '' : 's'} ${styleHits.length === 1 ? 'is' : 'are'} worth a second look. Passive voice, filler and hedging words make writing feel heavier than it needs to, so tightening these reads more directly.`}
-                </p>
-
-                {styleHits.length > 0 && (
-                  <div>
-                    {styleHits.map((hit, i) => (
-                      <div
-                        key={`${hit.index}-${hit.offset}-${i}`}
-                        style={{
-                          display: 'flex',
-                          gap: '0.9rem',
-                          padding: '0.7rem 0',
-                          borderBottom: '1px solid #eee',
-                        }}
-                      >
-                        <span
-                          style={{
-                            minWidth: '6.5rem',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
-                            letterSpacing: '0.02em',
-                            color: '#555',
-                            flexShrink: 0,
-                          }}
-                        >
-                          {hit.category}
-                        </span>
-                        <span style={{ color: '#212121', fontSize: '1rem' }}>{hit.reason}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
+          <section style={sectionGap}>
+            <h2 style={H2_STYLE}>Built with</h2>
+            <p
+              style={{
+                fontFamily: FONT,
+                fontSize: '1rem',
+                lineHeight: 1.6,
+                color: '#3a3a3a',
+                margin: '0 0 0.9rem',
+              }}
+            >
+              These npm packages run in your browser. No uploads, no API calls, no API keys.
+            </p>
+            <div
+              style={{
+                fontFamily: FONT,
+                fontSize: '1rem',
+                lineHeight: 1.75,
+                color: '#3a3a3a',
+              }}
+            >
+              {STACK_PACKAGES.map((item) => (
+                <div key={item.name} style={{ marginBottom: '0.65rem' }}>
+                  <span style={{ fontWeight: 700 }}>
+                    {item.name}
+                    {item.npm ? ' (npm)' : ''}
+                  </span>
+                  <span>: {item.role}</span>
+                </div>
+              ))}
+            </div>
           </section>
         </>
       )}

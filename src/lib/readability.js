@@ -53,6 +53,53 @@ export function getDifficultWordChips(text, difficultWords) {
     .slice(0, 60);
 }
 
+export function roundGrade(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 1;
+  return Math.round(value);
+}
+
+export function getCliHighGrade(bucket) {
+  if (bucket === 'le4') return 4;
+  if (bucket === '5to8') return 8;
+  if (bucket === '9to12') return 12;
+  return null;
+}
+
+export function getDaleHighGradeLabel(bandIndex) {
+  const labels = [
+    'grade 4',
+    'grade 6',
+    'grade 8',
+    'grade 10',
+    'grade 12',
+    'college level',
+    'college graduate level',
+  ];
+  return labels[bandIndex] ?? 'college graduate level';
+}
+
+export function formatCliGradePhrase(cli, bucket) {
+  const grade = roundGrade(cli);
+  const high = getCliHighGrade(bucket);
+  if (high === null) {
+    return `about grade ${grade}, readable at college level and above`;
+  }
+  return `about grade ${grade}, readable up to grade ${high}`;
+}
+
+export function formatDaleGradePhrase(dale, bandIndex, bandLabel) {
+  const score = roundGrade(dale);
+  const high = getDaleHighGradeLabel(bandIndex);
+  if (high.includes('college')) {
+    return `score ${score}, a ${bandLabel.toLowerCase()} reading level, up to ${high}`;
+  }
+  return `score ${score}, a ${bandLabel.toLowerCase()} reading level, up to ${high}`;
+}
+
+export function formatGunningFogPhrase(grade, bucket) {
+  return formatCliGradePhrase(grade, bucket);
+}
+
 export function getFleschBand(score) {
   if (score >= 90) return { label: 'Very Easy', index: 0 };
   if (score >= 80) return { label: 'Easy', index: 1 };
@@ -84,9 +131,9 @@ export function computeMetrics(text) {
   const flesch = roundScore(rs.fleschReadingEase(text));
   const cli = roundScore(rs.colemanLiauIndex(text));
   const dale = roundScore(rs.daleChallReadabilityScore(text));
+  const gunningFog = roundScore(rs.gunningFog(text));
   const difficultCount = rs.difficultWords(text);
   const lexicon = rs.lexiconCount(text);
-  const textStandard = rs.textStandard(text);
   const { words: difficultWords, lookup: difficultLookup } =
     getDifficultWordsSet(text);
 
@@ -94,13 +141,14 @@ export function computeMetrics(text) {
     flesch,
     cli: Math.max(1, cli),
     dale,
+    gunningFog: Math.max(1, gunningFog),
     difficultCount,
     lexicon,
-    textStandard,
     difficultWords,
     difficultLookup,
     fleschBand: getFleschBand(flesch),
     daleBand: getDaleChallBand(dale),
     cliBucket: getCliBucket(Math.max(1, cli)),
+    gunningBucket: getCliBucket(Math.max(1, gunningFog)),
   };
 }

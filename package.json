@@ -11,8 +11,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "compromise": "^14.15.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "sentence-splitter": "^5.0.1",
     "text-readability": "^1.1.1",
     "write-good": "^1.0.8"
   },

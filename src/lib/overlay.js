@@ -19,6 +19,7 @@ export function categorizeStyleHit(reason) {
   if (/clich/.test(lower)) return 'Cliché';
   if (/no meaning|adds nothing|so\b/.test(lower)) return 'Filler';
   if (/there (is|are)/.test(lower)) return 'Vague opener';
+  if (/is repeated/.test(lower)) return 'Style';
   return 'Style';
 }
 
