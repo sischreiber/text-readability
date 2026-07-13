@@ -251,7 +251,7 @@
 </script>
 
 <div style={PAGE_STYLE}>
-  <h1 style={H1_STYLE}>Text Readability</h1>
+  <h1 style={H1_STYLE}>Readability Analyzer</h1>
 
   <textarea
     value={rawInput}
@@ -628,7 +628,7 @@
         sischreiber
       </a>
       <a
-        href="https://github.com/sischreiber/text-readability"
+        href="https://github.com/sischreiber/readability-analyzer"
         target="_blank"
         rel="noopener noreferrer"
         style={FOOTER_ICON_LINK_STYLE}

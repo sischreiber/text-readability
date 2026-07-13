@@ -1,6 +1,8 @@
-# Text Readability
+# Readability Analyzer
 
-A minimal client-side tool that analyzes pasted English text for readability scores, difficult words, and common style issues. Built as a portfolio piece for [sischreiber.com](https://sischreiber.com).
+Readability Analyzer is a minimal client-side tool that analyzes pasted English text for readability scores, difficult words, and common style issues. Built as a portfolio piece for [sischreiber.com](https://sischreiber.com).
+
+Repo: [github.com/sischreiber/readability-analyzer](https://github.com/sischreiber/readability-analyzer)
 
 Paste text into the box and the app computes everything in your browser. No server, no API keys.
 
@@ -51,4 +53,4 @@ Lightweight unit tests cover input gating, text tokenization, word variety count
 
 ## Deploy
 
-The project is a standard Vite + Svelte app. Push to GitHub and import the repo in [Vercel](https://vercel.com) for zero-config deployment.
+The project is a standard Vite + Svelte app. Push to [GitHub](https://github.com/sischreiber/readability-analyzer) and import the repo in [Vercel](https://vercel.com) for zero-config deployment.
