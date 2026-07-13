@@ -4,6 +4,8 @@ Readability Analyzer is a minimal client-side tool that analyzes pasted English 
 
 Paste text into the box and the app computes everything in your browser. No server, no API keys.
 
+Live app: [readability-analyzer.vercel.app](https://readability-analyzer.vercel.app)
+
 ## What it measures
 
 | Result | What it tells you |
@@ -54,4 +56,4 @@ Lightweight unit tests cover input gating, text tokenization, word variety count
 
 ## Deploy
 
-The project is a standard Vite + Svelte app. Push to [GitHub](https://github.com/sischreiber/readability-analyzer) and import the repo in [Vercel](https://vercel.com) for zero-config deployment.
+Live at [readability-analyzer.vercel.app](https://readability-analyzer.vercel.app). The project is a standard Vite + Svelte app: push to [GitHub](https://github.com/sischreiber/readability-analyzer) and import the repo in [Vercel](https://vercel.com) for zero-config deployment.
