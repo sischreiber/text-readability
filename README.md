@@ -1,8 +1,6 @@
 # Readability Analyzer
 
-Readability Analyzer is a minimal client-side tool that analyzes pasted English text for readability scores, difficult words, and common style issues. Built as a portfolio piece for [sischreiber.com](https://sischreiber.com).
-
-Repo: [github.com/sischreiber/readability-analyzer](https://github.com/sischreiber/readability-analyzer)
+Readability Analyzer is a minimal client-side tool that analyzes pasted English text for readability scores, difficult words, and common style issues.
 
 Paste text into the box and the app computes everything in your browser. No server, no API keys.
 
@@ -20,9 +18,9 @@ Paste text into the box and the app computes everything in your browser. No serv
 | **Lexical density** | Percentage of words that are content words (nouns, verbs, adjectives, adverbs) rather than function words. |
 | **Difficult words** | Words the readability formulas flag as harder, highlighted in the text and listed as chips with counts. |
 
-Beyond scoring, the app builds a copyable LLM prompt that asks a model to rewrite the text for better readability while keeping subject-matter vocabulary unchanged. The prompt includes the current readability scores, a protected-vocabulary list, flagged long sentences, word-variety stats, style issues from write-good, and instructions for a before/after metrics comparison in the model's answer.
+It also builds a copyable LLM prompt that asks a model to rewrite the text for readability without changing subject-matter vocabulary. The prompt includes your scores, protected terms, long sentences, and style flags, plus a before/after metrics comparison.
 
-Non-English text and samples under 12 words are gated with a short message instead of scores. In-text highlighting is omitted for very long pastes (over 20,000 characters).
+Non-English text and samples under 12 words show a short notice instead of scores.
 
 ## Libraries
 
