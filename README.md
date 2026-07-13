@@ -1,6 +1,6 @@
 # Readability Analyzer
 
-Readability Analyzer is a minimal client-side tool that analyzes pasted English text for readability scores, difficult words, and common style issues. Built as a portfolio piece for [sischreiber.com](https://sischreiber.com).
+Readability Analyzer is a minimal client-side tool that analyzes pasted English text for readability scores, difficult words, and common style issues.
 
 Repo: [github.com/sischreiber/readability-analyzer](https://github.com/sischreiber/readability-analyzer)
 
