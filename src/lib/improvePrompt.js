@@ -190,7 +190,7 @@ function formatProtectedVocabularyBlock(metrics) {
     .join('\n');
 }
 
-function formatLongSentencesBlock(text, sentenceStats) {
+export function formatLongSentencesBlock(text, sentenceStats) {
   const { items, total } = getLongSentencesForPrompt(text, sentenceStats);
 
   if (total === 0) {

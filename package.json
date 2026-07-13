@@ -8,10 +8,16 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postinstall": "mkdir -p public/patterns && cp node_modules/hyphenopoly/patterns/de.wasm public/patterns/de.wasm"
   },
   "dependencies": {
+    "@lunarisapp/readability": "^1.1.1",
     "compromise": "^14.15.1",
+    "fleschDe": "^0.0.3",
+    "franc-min": "^6.2.0",
+    "hyphenopoly": "^6.0.0",
+    "lix-index": "^2.0.0",
     "sentence-splitter": "^5.0.1",
     "text-readability": "^1.1.1",
     "write-good": "^1.0.8"

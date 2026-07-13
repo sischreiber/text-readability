@@ -7,6 +7,10 @@
   import ScoreTable from './components/ScoreTable.svelte';
   import { rollCopyPicks } from './lib/copyPools.js';
   import { evaluateGate } from './lib/gates.js';
+  import { detectLanguage } from './lib/languageDetect.js';
+  import { rollGermanCopyPicks } from './lib/germanCopyPools.js';
+  import { computeGermanMetrics } from './lib/readabilityDe.js';
+  import { buildGermanImprovePrompt } from './lib/improvePromptDe.js';
   import {
     computeMetrics,
     formatCliGradePhrase,
@@ -60,6 +64,10 @@
     SECTION_GAP,
     SECTION_GAP_FIRST,
     STACK_PACKAGES,
+    STACK_PACKAGES_DE,
+    FRE_ROWS_DE,
+    WSTF_ROWS,
+    LIX_ROWS,
     SYLLABLE_COLORS,
     TEXTAREA_STYLE,
   } from './lib/uiConstants.js';
@@ -74,6 +82,9 @@
   let syllableLegendHover = $state(null);
   let sentenceLegendHover = $state(null);
   let posLegendHover = $state(null);
+  let germanMetrics = $state(null);
+  let germanLoading = $state(false);
+  let germanError = $state(null);
 
   let pendingPaste = false;
   let prevMetrics = null;
@@ -132,18 +143,64 @@
     analysisText = '';
     securityBlock = null;
     pendingPaste = false;
+    germanMetrics = null;
+    germanLoading = false;
+    germanError = null;
   }
 
-  const gate = $derived(evaluateGate(analysisText));
+  const activeLanguage = $derived(
+    analysisText.trim() && !securityBlock ? detectLanguage(analysisText) : 'und',
+  );
+  const isGerman = $derived(activeLanguage === 'deu');
+
+  const gate = $derived(evaluateGate(analysisText, activeLanguage));
 
   const metrics = $derived.by(() => {
-    if (gate.type !== 'ok') return null;
+    if (gate.type !== 'ok' || isGerman) return null;
     return computeMetrics(analysisText);
   });
 
   const wordVariety = $derived.by(() => {
-    if (gate.type !== 'ok') return null;
+    if (gate.type !== 'ok' || isGerman) return null;
     return analyzeWordVariety(analysisText);
+  });
+
+  $effect(() => {
+    if (!isGerman || gate.type !== 'ok' || !analysisText.trim()) {
+      germanMetrics = null;
+      germanLoading = false;
+      germanError = null;
+      return;
+    }
+
+    const text = analysisText;
+    let cancelled = false;
+    germanLoading = true;
+
+    computeGermanMetrics(text)
+      .then((result) => {
+        if (!cancelled) {
+          germanMetrics = result;
+          germanLoading = false;
+          germanError = null;
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          germanLoading = false;
+          germanError = error instanceof Error ? error.message : 'German analysis failed.';
+          console.error('German readability analysis failed:', error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  const germanCopy = $derived.by(() => {
+    if (!germanMetrics) return null;
+    return rollGermanCopyPicks(germanMetrics);
   });
 
   const copy = $derived.by(() => {
@@ -182,12 +239,22 @@
 
   const sentenceLengthStats = $derived.by(() => {
     if (gate.type !== 'ok') return null;
-    return analyzeSentenceLength(analysisText);
+    if (isGerman && germanMetrics) return germanMetrics.sentenceLengthStats;
+    return analyzeSentenceLength(analysisText, activeLanguage);
   });
 
   const sentenceLengthSegments = $derived.by(() => {
     if (skipHighlight || gate.type !== 'ok') return null;
-    return buildSentenceLengthSegments(analysisText);
+    return buildSentenceLengthSegments(analysisText, activeLanguage);
+  });
+
+  const germanSyllableSegments = $derived.by(() => {
+    if (skipHighlight || gate.type !== 'ok' || !isGerman || !germanMetrics) return null;
+    return tokenizeWithGaps(analysisText, 'deu').map((seg) => {
+      if (seg.type === 'gap') return seg;
+      const count = syllableClass(germanMetrics.syllableLookup.get(seg.text));
+      return { ...seg, syllables: count };
+    });
   });
 
   const showSentenceLengthBox = $derived(
@@ -233,9 +300,15 @@
   });
 
   const improvePrompt = $derived.by(() => {
-    if (gate.type !== 'ok' || !metrics || !wordVariety || !sentenceLengthStats) {
-      return null;
+    if (gate.type !== 'ok' || !sentenceLengthStats) return null;
+    if (isGerman && germanMetrics) {
+      return buildGermanImprovePrompt({
+        text: analysisText,
+        metrics: germanMetrics,
+        sentenceStats: sentenceLengthStats,
+      });
     }
+    if (!metrics || !wordVariety) return null;
     const inputs = gatherPromptInputs(
       analysisText,
       metrics,
@@ -246,7 +319,10 @@
   });
 
   const showResults = $derived(
-    !securityBlock && gate.type === 'ok' && metrics && copy,
+    !securityBlock &&
+      gate.type === 'ok' &&
+      !germanLoading &&
+      (isGerman ? germanMetrics && germanCopy : metrics && copy),
   );
 </script>
 
@@ -280,13 +356,33 @@
     </div>
   {/if}
 
-  {#if !securityBlock && gate.type === 'non-english' && analysisText.trim() !== ''}
+  {#if !securityBlock && gate.type === 'unsupported' && analysisText.trim() !== ''}
     <div
       style="margin-top:1.6rem;background:#fff6f5;border:1px solid #e6b9b4;border-left:4px solid #9a2b2b;border-radius:5px;padding:0.85rem 1rem"
     >
       <span style="color:#7a2222;font-size:0.9rem">
-        This text doesn't look like English. Readability scores are calculated for English text
-        only. Paste English text to see the metrics.
+        This text does not look like English or German. Readability scores are available for
+        English and German only.
+      </span>
+    </div>
+  {/if}
+
+  {#if !securityBlock && germanError && isGerman && gate.type === 'ok'}
+    <div
+      style="margin-top:1.6rem;background:#fff6f5;border:1px solid #e6b9b4;border-left:4px solid #9a2b2b;border-radius:5px;padding:0.85rem 1rem"
+    >
+      <span style="color:#7a2222;font-size:0.9rem">
+        German analysis could not run: {germanError}
+      </span>
+    </div>
+  {/if}
+
+  {#if !securityBlock && germanLoading && isGerman && gate.type === 'ok'}
+    <div
+      style="margin-top:1.6rem;background:#f5f7ff;border:1px solid #c8d0ef;border-radius:5px;padding:0.85rem 1rem"
+    >
+      <span style="color:#3a3a3a;font-size:0.9rem">
+        Loading German syllable patterns…
       </span>
     </div>
   {/if}
@@ -302,7 +398,173 @@
     </div>
   {/if}
 
-  {#if showResults}
+  {#if showResults && isGerman}
+    <section style={SECTION_GAP_FIRST}>
+      <h2 style={H2_STYLE}>Flesch-Index (Amstad)</h2>
+      <p style={PROSE_STYLE}>{germanCopy.freIntro}</p>
+      {#if germanSyllableSegments}
+        <Legend
+          items={[
+            { key: 2, label: '2 Silben', color: SYLLABLE_COLORS[2] },
+            { key: 3, label: '3 Silben', color: SYLLABLE_COLORS[3] },
+            { key: 4, label: '4+ Silben', color: SYLLABLE_COLORS[4] },
+          ]}
+          bind:activeKey={syllableLegendHover}
+          interactive
+        />
+        <HighlightedTextBox
+          segments={germanSyllableSegments}
+          getBackground={(seg) =>
+            syllableHighlightColor(seg.syllables, syllableLegendHover)}
+          getTooltip={(seg) => syllableTooltipLabel(seg.syllables)}
+        />
+      {/if}
+      <p
+        style="{PROSE_STYLE}{germanSyllableSegments
+          ? ';margin:0.9rem 0 0.9rem'
+          : ''}"
+      >
+        Dein Wert ist
+        <FlashValue
+          value={formatScore(germanMetrics.flesch)}
+          {flashOnChange}
+          {flashToggle}
+        />, eingestuft als
+        <span style="font-weight:700">{germanMetrics.fleschBand.label.toLowerCase()}</span>.
+        {germanCopy.freReader}
+      </p>
+      <ScoreTable
+        rows={FRE_ROWS_DE}
+        activeIndex={germanMetrics.fleschBand.index}
+        columns={['Wert', 'Schwierigkeit']}
+      />
+    </section>
+
+    <section style={SECTION_GAP}>
+      <h2 style={H2_STYLE}>Satzlänge</h2>
+      <p style={PROSE_STYLE}>
+        {sentenceLengthStats && sentenceLengthStats.longCount > 0
+          ? germanCopy.sentenceLongLine(
+              sentenceLengthStats.longCount,
+              sentenceLengthStats.total,
+            )
+          : germanCopy.sentenceOkLine}
+      </p>
+      {#if showSentenceLengthBox}
+        <Legend
+          items={[
+            {
+              key: 'borderline',
+              label: '21 bis 30 Wörter',
+              color: SENTENCE_LENGTH_COLORS.borderline,
+              disabled: sentenceBandCounts.borderline === 0,
+            },
+            {
+              key: 'too-long',
+              label: '31+ Wörter',
+              color: SENTENCE_LENGTH_COLORS['too-long'],
+              disabled: sentenceBandCounts['too-long'] === 0,
+            },
+          ]}
+          bind:activeKey={sentenceLegendHover}
+          interactive
+        />
+        <div style={IN_TEXT_BOX_STYLE}>
+          {#each sentenceLengthSegments as seg, i (i)}
+            {#if seg.type === 'gap'}
+              <span style={segmentStyle()}>{seg.text}</span>
+            {:else}
+              <span
+                style={segmentStyle(
+                  sentenceHighlightColor(seg.band, sentenceLegendHover),
+                )}>{seg.text}</span
+              >
+            {/if}
+          {/each}
+        </div>
+      {/if}
+      {#if sentenceLengthStats && sentenceLengthStats.total > 0}
+        <p
+          style="color:#555;font-size:0.9rem;margin:{showSentenceLengthBox
+            ? '0.75rem 0 0'
+            : '0'}"
+        >
+          Längster Satz: <span style="font-weight:700">{sentenceLengthStats.longest}</span>
+          Wörter.
+        </p>
+      {/if}
+    </section>
+
+    <section style={SECTION_GAP}>
+      <h2 style={H2_STYLE}>Wiener Sachtextformel</h2>
+      <p style={PROSE_STYLE}>{germanCopy.wstfIntro}</p>
+      <p style="{PROSE_STYLE};margin:0">
+        Die Wiener Sachtextformel ergibt
+        <span style="font-weight:700">{formatScore(germanMetrics.wstf)}</span>, eingestuft als
+        <span style="font-weight:700">{germanMetrics.wstfBand.label.toLowerCase()}</span>.
+        {germanCopy.wstfReader}
+      </p>
+      <ScoreTable
+        rows={WSTF_ROWS}
+        activeIndex={germanMetrics.wstfBand.index}
+        columns={['Wert', 'Lesbarkeit']}
+      />
+    </section>
+
+    <section style={SECTION_GAP}>
+      <h2 style={H2_STYLE}>LIX</h2>
+      <p style={PROSE_STYLE}>{germanCopy.lixIntro}</p>
+      <p style="{PROSE_STYLE};margin:0">
+        Der LIX-Wert liegt bei
+        <span style="font-weight:700">{formatScore(germanMetrics.lix)}</span>, eingestuft als
+        <span style="font-weight:700">{germanMetrics.lixBand.label.toLowerCase()}</span>.
+        {germanCopy.lixReader}
+      </p>
+      <ScoreTable
+        rows={LIX_ROWS}
+        activeIndex={germanMetrics.lixBand.index}
+        columns={['Wert', 'Texttyp']}
+      />
+    </section>
+
+    <section style={SECTION_GAP}>
+      <h2 style={H2_STYLE}>Mit KI verbessern</h2>
+      <p style="color:#3a3a3a;font-size:1rem;margin:0 0 0.9rem">
+        Kopiere diesen Prompt in ein LLM, um den Text klarer zu formulieren, ohne den Inhalt zu
+        verändern.
+      </p>
+      <div
+        style="border:1px solid #d9d9d9;border-radius:5px;padding:1rem 1.1rem;background:#f5f7ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:#212121;max-height:22rem;overflow:auto"
+      >
+        {improvePrompt}
+      </div>
+      <div style="margin-top:0.65rem">
+        <CopyPromptButton text={improvePrompt} />
+      </div>
+    </section>
+
+    <section style={SECTION_GAP}>
+      <h2 style={H2_STYLE}>Built with</h2>
+      <p style="font-family:{FONT};font-size:1rem;line-height:1.6;color:#3a3a3a;margin:0 0 0.9rem">
+        Diese npm-Pakete laufen in deinem Browser. Keine Uploads, keine API-Aufrufe, keine API-Keys.
+      </p>
+      <div style="font-family:{FONT};font-size:1rem;line-height:1.75;color:#3a3a3a">
+        {#each STACK_PACKAGES_DE as item (item.name)}
+          <div style="margin-bottom:0.65rem">
+            <a
+              href={item.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              style="{LINK_STYLE};font-weight:700"
+            >
+              {item.name}
+            </a>
+            <span>: {item.role}</span>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {:else if showResults}
     <section style={SECTION_GAP_FIRST}>
       <h2 style={H2_STYLE}>Flesch Reading Ease</h2>
       <p style={PROSE_STYLE}>{copy.freIntro}</p>

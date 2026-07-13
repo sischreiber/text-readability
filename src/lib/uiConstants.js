@@ -37,6 +37,65 @@ export const DALE_ROWS = [
   { range: '10.0 and up', label: 'College graduate', match: (s) => s >= 10.0 },
 ];
 
+export const FRE_ROWS_DE = [
+  { range: '90–100', label: 'Sehr leicht', min: 90 },
+  { range: '80–89', label: 'Leicht', min: 80 },
+  { range: '70–79', label: 'Mittelschwer', min: 70 },
+  { range: '60–69', label: 'Mittelschwer', min: 60 },
+  { range: '50–59', label: 'Schwer', min: 50 },
+  { range: '30–49', label: 'Sehr schwer', min: 30 },
+  { range: '0–29', label: 'Sehr schwer', min: 0 },
+];
+
+export const WSTF_ROWS = [
+  { range: '15+', label: 'Sehr leicht', min: 15 },
+  { range: '12–14,9', label: 'Leicht', min: 12 },
+  { range: '9–11,9', label: 'Mittel', min: 9 },
+  { range: '6–8,9', label: 'Schwer', min: 6 },
+  { range: 'unter 6', label: 'Sehr schwer', min: 0 },
+];
+
+export const LIX_ROWS = [
+  { range: 'unter 25', label: 'Kinderbücher', min: 0 },
+  { range: '25–34', label: 'Belletristik', min: 25 },
+  { range: '35–44', label: 'Normaler Text', min: 35 },
+  { range: '45–54', label: 'Sachtexte', min: 45 },
+  { range: '55+', label: 'Wissenschaftlich', min: 55 },
+];
+
+export const STACK_PACKAGES_DE = [
+  {
+    name: 'fleschDe',
+    href: 'https://www.npmjs.com/package/fleschDe',
+    role: 'Flesch-Index nach Amstad für deutsche Texte',
+  },
+  {
+    name: '@lunarisapp/readability',
+    href: 'https://www.npmjs.com/package/@lunarisapp/readability',
+    role: 'Wiener Sachtextformel (Formelfunktion)',
+  },
+  {
+    name: 'lix-index',
+    href: 'https://www.npmjs.com/package/lix-index',
+    role: 'LIX-Lesbarkeitsindex',
+  },
+  {
+    name: 'hyphenopoly',
+    href: 'https://www.npmjs.com/package/hyphenopoly',
+    role: 'Deutsche Silbentrennung und Silbenzählung',
+  },
+  {
+    name: 'franc-min',
+    href: 'https://www.npmjs.com/package/franc-min',
+    role: 'Automatische Spracherkennung (Deutsch/Englisch)',
+  },
+  {
+    name: 'sentence-splitter',
+    href: 'https://www.npmjs.com/package/sentence-splitter',
+    role: 'Satzgrenzen und Satzlänge',
+  },
+];
+
 export const STACK_PACKAGES = [
   {
     name: 'text-readability',

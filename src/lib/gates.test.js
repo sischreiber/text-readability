@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countWords, evaluateGate, isNonEnglish } from '../lib/gates';
+import { countWords, evaluateGate } from '../lib/gates';
 
 describe('gates', () => {
   it('counts words with letters, digits, and apostrophes', () => {
@@ -10,27 +10,27 @@ describe('gates', () => {
     expect(evaluateGate('   ').type).toBe('empty');
   });
 
-  it('flags non-English letters', () => {
-    expect(isNonEnglish('This café has enough words to trigger detection here')).toBe(
-      true,
-    );
-  });
-
-  it('flags likely German text via stopwords', () => {
-    const text =
-      'der die das und ist nicht ein eine mit auf für von den dem sich auch aber';
-    expect(isNonEnglish(text)).toBe(true);
-  });
-
   it('passes plain English sample', () => {
     const text =
       'The quick brown fox jumps over the lazy dog while the sun shines brightly today.';
-    expect(evaluateGate(text).type).toBe('ok');
+    expect(evaluateGate(text, 'eng').type).toBe('ok');
+  });
+
+  it('passes German sample when language is deu', () => {
+    const text =
+      'Die Analyse der Lesbarkeit deutscher Texte erfordert zuverlässige Silbentrennung und klare Sätze.';
+    expect(evaluateGate(text, 'deu').type).toBe('ok');
   });
 
   it('requires at least twelve words', () => {
-    const gate = evaluateGate('one two three four five six seven eight nine ten eleven');
+    const gate = evaluateGate('one two three four five six seven eight nine ten eleven', 'eng');
     expect(gate.type).toBe('too-short');
     expect(gate.wordCount).toBe(11);
+  });
+
+  it('flags unsupported language', () => {
+    const text =
+      'Ceci est un texte français avec assez de mots pour déclencher une analyse complète.';
+    expect(evaluateGate(text, 'und').type).toBe('unsupported');
   });
 });

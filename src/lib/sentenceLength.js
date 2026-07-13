@@ -1,6 +1,9 @@
 import { SentenceSplitterSyntax, split } from 'sentence-splitter';
 
+import { countGermanWords } from './germanText.js';
+
 const WORD_RE = /[A-Za-z0-9']+/g;
+const GERMAN_WORD_RE = /[\p{L}\p{M}0-9']+/gu;
 
 export const SENTENCE_LENGTH_COLORS = {
   fine: null,
@@ -8,7 +11,8 @@ export const SENTENCE_LENGTH_COLORS = {
   'too-long': '#ff9494',
 };
 
-export function countWordsInSpan(text) {
+export function countWordsInSpan(text, language = 'eng') {
+  if (language === 'deu') return countGermanWords(text);
   const matches = text.match(WORD_RE);
   return matches ? matches.length : 0;
 }
@@ -19,7 +23,7 @@ export function classifySentenceLength(wordCount) {
   return 'too-long';
 }
 
-export function analyzeSentenceLength(text) {
+export function analyzeSentenceLength(text, language = 'eng') {
   const nodes = split(text);
   const sentences = [];
 
@@ -29,7 +33,7 @@ export function analyzeSentenceLength(text) {
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
 
     const sentenceText = text.slice(start, end);
-    const wordCount = countWordsInSpan(sentenceText);
+    const wordCount = countWordsInSpan(sentenceText, language);
     sentences.push({
       start,
       end,
@@ -45,7 +49,7 @@ export function analyzeSentenceLength(text) {
   return { sentences, total, longCount, longest };
 }
 
-export function buildSentenceLengthSegments(text) {
+export function buildSentenceLengthSegments(text, language = 'eng') {
   const nodes = split(text);
   const segments = [];
   let lastIndex = 0;
@@ -60,7 +64,7 @@ export function buildSentenceLengthSegments(text) {
 
     const slice = text.slice(start, end);
     if (node.type === SentenceSplitterSyntax.Sentence) {
-      const wordCount = countWordsInSpan(slice);
+      const wordCount = countWordsInSpan(slice, language);
       segments.push({
         type: 'sentence',
         text: slice,
